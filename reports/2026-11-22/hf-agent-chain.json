@@ -1,0 +1,142 @@
+{
+  "latent": {
+    "colocated": {
+      "total_s_for_8": 98.31426471698796,
+      "ttft_p50_s": 7.060469873511465,
+      "tasks_per_s": 0.08137171165373788,
+      "judge_tokens_per_s": 35.83406751951482,
+      "numeric_correct": 5,
+      "official_correct": 6,
+      "mean_kv_handoffs_per_batch": 0,
+      "mean_logical_kv_mib_per_batch": 0.0,
+      "mean_prefill_synchronized_s_per_batch": null,
+      "mean_kv_copy_s_per_batch": 0,
+      "mean_p_to_d_kv_copy_s_per_batch": 0,
+      "mean_d_to_p_kv_copy_s_per_batch": 0,
+      "logical_kv_mib_p_to_d_by_role": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "logical_kv_mib_d_to_p_by_role": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "batches_s": [
+        65.7089188270038,
+        32.605345889984164
+      ],
+      "batches_ttft_s": [
+        7.260091588017531,
+        6.8608481590054
+      ]
+    },
+    "split": {
+      "total_s_for_8": 107.38693909702124,
+      "ttft_p50_s": 10.657362009005737,
+      "tasks_per_s": 0.07449695528403331,
+      "judge_tokens_per_s": 32.80659668320617,
+      "numeric_correct": 5,
+      "official_correct": 6,
+      "mean_kv_handoffs_per_batch": 7,
+      "mean_logical_kv_mib_per_batch": 2077.3125,
+      "mean_prefill_synchronized_s_per_batch": 0.6562634035217343,
+      "mean_kv_copy_s_per_batch": 2.5175846659985837,
+      "mean_p_to_d_kv_copy_s_per_batch": 1.6545942924858537,
+      "mean_d_to_p_kv_copy_s_per_batch": 0.86299037351273,
+      "logical_kv_mib_p_to_d_by_role": [
+        102.09375,
+        249.75,
+        389.53125,
+        527.0625
+      ],
+      "logical_kv_mib_d_to_p_by_role": [
+        124.59375,
+        272.25,
+        412.03125,
+        0.0
+      ],
+      "batches_s": [
+        71.29225651800516,
+        36.09468257901608
+      ],
+      "batches_ttft_s": [
+        11.427303828008007,
+        9.887420190003468
+      ]
+    }
+  },
+  "text": {
+    "colocated": {
+      "total_s_for_8": 310.1208525690017,
+      "ttft_p50_s": 127.3113704270072,
+      "tasks_per_s": 0.025796394965798063,
+      "judge_tokens_per_s": 6.26852397668893,
+      "numeric_correct": 8,
+      "official_correct": 7,
+      "mean_kv_handoffs_per_batch": 0,
+      "mean_logical_kv_mib_per_batch": 0.0,
+      "mean_prefill_synchronized_s_per_batch": null,
+      "mean_kv_copy_s_per_batch": 0,
+      "mean_p_to_d_kv_copy_s_per_batch": 0,
+      "mean_d_to_p_kv_copy_s_per_batch": 0,
+      "logical_kv_mib_p_to_d_by_role": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "logical_kv_mib_d_to_p_by_role": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "batches_s": [
+        185.0938500839984,
+        125.02700248500332
+      ],
+      "batches_ttft_s": [
+        159.90165870200144,
+        94.72108215201297
+      ]
+    },
+    "split": {
+      "total_s_for_8": 324.38900088501396,
+      "ttft_p50_s": 133.650811949512,
+      "tasks_per_s": 0.024661748635662763,
+      "judge_tokens_per_s": 5.992804918466051,
+      "numeric_correct": 8,
+      "official_correct": 7,
+      "mean_kv_handoffs_per_batch": 4,
+      "mean_logical_kv_mib_per_batch": 2851.875,
+      "mean_prefill_synchronized_s_per_batch": 3.3574595095269615,
+      "mean_kv_copy_s_per_batch": 3.980107532988768,
+      "mean_p_to_d_kv_copy_s_per_batch": 3.980107532988768,
+      "mean_d_to_p_kv_copy_s_per_batch": 0,
+      "logical_kv_mib_p_to_d_by_role": [
+        113.0625,
+        577.125,
+        963.84375,
+        1197.84375
+      ],
+      "logical_kv_mib_d_to_p_by_role": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "batches_s": [
+        192.8628333680099,
+        131.52616751700407
+      ],
+      "batches_ttft_s": [
+        167.2205363420071,
+        100.08108755701687
+      ]
+    }
+  }
+}

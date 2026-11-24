@@ -1,0 +1,101 @@
+{
+  "config": {
+    "torch": "2.5.1+cu121",
+    "transformers": "4.57.3",
+    "decode_gpu": "NVIDIA GeForce RTX 3090",
+    "dtype": "torch.bfloat16",
+    "prefill_device": 1,
+    "short_tokens": 13,
+    "long_tokens": 8192,
+    "chunk_tokens": 512,
+    "decode_steps": 100,
+    "arrival_decode_steps": [
+      12,
+      44,
+      76
+    ],
+    "replicates": 3,
+    "modes": [
+      "decode_only",
+      "shared_full",
+      "shared_chunked",
+      "isolated"
+    ]
+  },
+  "statistics": {
+    "decode_only": {
+      "n_token_intervals": 300,
+      "itl_p50_ms": 65.0641554966569,
+      "itl_p95_ms": 67.40446627227357,
+      "itl_p99_ms": 71.97049869137116,
+      "itl_max_ms": 96.31911900942214,
+      "long_prefill_completion_p50_ms": null,
+      "prefill_windows": 0,
+      "prefill_windows_during_decode": 0,
+      "overlap_ms": []
+    },
+    "shared_full": {
+      "n_token_intervals": 300,
+      "itl_p50_ms": 65.13511850789655,
+      "itl_p95_ms": 68.61599653348094,
+      "itl_p99_ms": 1433.4403109896812,
+      "itl_max_ms": 1439.8572510108352,
+      "long_prefill_completion_p50_ms": 1363.4853869734798,
+      "prefill_windows": 9,
+      "prefill_windows_during_decode": 9,
+      "overlap_ms": [
+        1344.28,
+        1352.598,
+        1351.259,
+        1363.485,
+        1357.656,
+        1367.228,
+        1366.034,
+        1368.967,
+        1372.032
+      ]
+    },
+    "shared_chunked": {
+      "n_token_intervals": 300,
+      "itl_p50_ms": 67.48557751416229,
+      "itl_p95_ms": 202.8063107500202,
+      "itl_p99_ms": 241.85817739693448,
+      "itl_max_ms": 243.40688498341478,
+      "long_prefill_completion_p50_ms": 2612.1837780228816,
+      "prefill_windows": 9,
+      "prefill_windows_during_decode": 9,
+      "overlap_ms": [
+        2652.184,
+        2605.829,
+        2609.603,
+        2607.549,
+        2612.941,
+        2630.903,
+        2611.256,
+        2612.184,
+        2614.506
+      ]
+    },
+    "isolated": {
+      "n_token_intervals": 300,
+      "itl_p50_ms": 65.91838599706534,
+      "itl_p95_ms": 70.6825598172145,
+      "itl_p99_ms": 85.81431613216404,
+      "itl_max_ms": 98.1260790140368,
+      "long_prefill_completion_p50_ms": 1332.4421319994144,
+      "prefill_windows": 9,
+      "prefill_windows_during_decode": 9,
+      "overlap_ms": [
+        1369.601,
+        1322.959,
+        1325.941,
+        1362.836,
+        1329.045,
+        1331.549,
+        1389.062,
+        1332.442,
+        1334.29
+      ]
+    }
+  }
+}
