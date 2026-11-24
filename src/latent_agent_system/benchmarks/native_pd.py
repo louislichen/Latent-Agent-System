@@ -7,15 +7,20 @@ from pathlib import Path
 import random
 import shutil
 
+from latent_agent_system.benchmarks.native_workload import replay, run_serial
 from latent_agent_system.reproducibility import snapshot_sources
-from latent_agent_system.serving.vllm_runtime import (
-    calibrate,
-    capture_after,
-    check_gpu_processes,
-    replay,
-    serving,
-    transfer_counters,
-)
+from latent_agent_system.serving.topology import plan_placement
+from latent_agent_system.serving.vllm_client import completion
+from latent_agent_system.serving.vllm_metrics import capture_after, transfer_counters
+from latent_agent_system.serving.vllm_runtime import VllmConfig, check_gpu_processes, serving
+
+
+def text_sender(placement, output_tokens, *, include_case=False):
+    async def send(client, prompt, index):
+        row = await completion(client, prompt, output_tokens, placement.route(index))
+        return {**row, 'index': index, 'input_tokens': len(prompt)} if include_case else row
+
+    return send
 
 
 def main():
@@ -44,6 +49,17 @@ def main():
         parser.error('Use distinct GPUs, a valid P/D partition, positive rates and multiple requests.')
     if not (args.model / 'weights_verified.json').is_file():
         parser.error('The experiment requires the verified Qwen3-4B checkpoint.')
+    try:
+        placements = {
+            n: plan_placement(args.gpu, n, args.port_base) for n in (0, *args.prefillers)
+        }
+    except ValueError as exc:
+        parser.error(str(exc))
+    config = VllmConfig(
+        model=args.model, max_model_len=args.prompt_tokens + args.output_tokens + 128,
+        chunk_tokens=args.chunk_tokens, prefill_chunk_tokens=args.prefill_chunk_tokens,
+        max_seqs=args.max_seqs, memory=args.memory, buffer=args.buffer, eager=args.eager,
+    )
     args.out.mkdir(parents=True, exist_ok=False)
     hashes = {
         f'source/{name}': digest
@@ -67,14 +83,14 @@ def main():
     first_gate = None
     with (args.out / 'runs.jsonl').open('x') as file:
         for num_prefill in (0, *args.prefillers):
-            roles = (['kv_producer'] * num_prefill + ['kv_consumer'] * (len(args.gpu) - num_prefill)
-                     if num_prefill else ['colocated'] * len(args.gpu))
+            placement = placements[num_prefill]
             name = f'{num_prefill}p{len(args.gpu) - num_prefill}d' if num_prefill else 'colocated'
             logdir = args.out / name
-            with serving(args, roles, logdir) as (urls, servers):
+            with serving(config, placement, logdir) as deployment:
+                urls = deployment.placement.urls
                 print(f'{name} ready', flush=True)
                 before = transfer_counters(urls, logdir, 'start')
-                gate = asyncio.run(calibrate(urls, num_prefill, probe))
+                gate = asyncio.run(run_serial(probe, text_sender(placement, 32), connections=4))
                 actual = [case['token_ids'] for case in gate]
                 if first_gate is None:
                     first_gate = actual
@@ -85,18 +101,18 @@ def main():
                 print(f'{name} short greedy gate exact={actual == first_gate}; NIXL {stats}', flush=True)
                 if actual != first_gate:
                     raise RuntimeError(f'{name} changed serial greedy output.')
+                send = text_sender(placement, args.output_tokens, include_case=True)
                 if not args.smoke:
                     warmup = trace[:8]
                     before = transfer_counters(urls, logdir, 'warmup_before')
-                    asyncio.run(replay(1.0, warmup, [0.0] * len(warmup), urls,
-                                       num_prefill, args.output_tokens))
+                    asyncio.run(replay(warmup, [0.0] * len(warmup), 1.0, send))
                     capture_after(urls, logdir, 'warmup_after', before, len(warmup) if num_prefill else 0)
                 for rate in (() if args.smoke else args.rates):
-                    check_gpu_processes(args.gpu, servers)
+                    deployment.check_health()
                     before = transfer_counters(urls, logdir, f'{rate}_before')
-                    raw = asyncio.run(replay(rate, trace, offsets, urls, num_prefill, args.output_tokens))
+                    raw = asyncio.run(replay(trace, offsets, rate, send))
                     stats = capture_after(urls, logdir, f'{rate}_after', before, len(raw) if num_prefill else 0)
-                    check_gpu_processes(args.gpu, servers)
+                    deployment.check_health()
                     file.write(json.dumps({'layout': name, 'rate': rate, 'cases': raw, 'transfer': stats}) + '\n')
                     file.flush()
                     print(f'{name} rate={rate} completed={len(raw)}', flush=True)

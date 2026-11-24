@@ -3,18 +3,20 @@
 import argparse
 import asyncio
 import base64
+from functools import partial
 import hashlib
 import io
 import json
 from pathlib import Path
 import random
 import shutil
-import time
-from types import SimpleNamespace
 
+from latent_agent_system.benchmarks.native_workload import replay, run_serial
 from latent_agent_system.reproducibility import snapshot_sources
-from latent_agent_system.serving.vllm_runtime import (capture_after, check_gpu_processes, client_for, completion,
-                       serving, transfer_counters)
+from latent_agent_system.serving.topology import plan_placement
+from latent_agent_system.serving.vllm_client import completion
+from latent_agent_system.serving.vllm_metrics import capture_after, transfer_counters
+from latent_agent_system.serving.vllm_runtime import VllmConfig, check_gpu_processes, serving
 
 
 def encode_tensor(tensor):
@@ -40,8 +42,9 @@ def load_cases(tensors, manifest):
     return groups
 
 
-async def send(client, case, output_tokens, prefill, decode, index, embeddings_file):
+async def send(client, case, index, *, placement, output_tokens, embeddings_file):
     length, ids, embeds, tensor = case
+    route = placement.route(index)
 
     def continuation(token):
         if tensor is None:
@@ -54,28 +57,11 @@ async def send(client, case, output_tokens, prefill, decode, index, embeddings_f
         assert next_embedding.shape == (1, tensor.shape[1])
         return {'prompt_embeds': encode_tensor(torch.cat((tensor, next_embedding.to(tensor.dtype)), dim=0))}
 
-    row = await completion(client, ids, output_tokens, decode[index % len(decode)],
-                           prefill[index % len(prefill)] if prefill else None, prompt_embeds=embeds,
-                           continuation=continuation if prefill else None, prompt_positions=length)
+    row = await completion(
+        client, ids, output_tokens, route, prompt_embeds=embeds,
+        continuation=continuation if route.prefill else None, prompt_positions=length,
+    )
     return {**row, 'index': index, 'input_tokens': length, 'base64_bytes': len(embeds) if embeds else 0}
-
-
-async def serial(cases, prefill, decode, embeddings_file):
-    async with client_for(len(cases)) as client:
-        return [await send(client, c, 32, prefill, decode, i, embeddings_file) for i, c in enumerate(cases)]
-
-
-async def online(cases, offsets, rate, output_tokens, prefill, decode, embeddings_file):
-    async with client_for(len(cases)) as client:
-        origin = time.perf_counter() + .05
-
-        async def arrival(i):
-            scheduled = origin + offsets[i] / rate
-            await asyncio.sleep(max(0, scheduled - time.perf_counter()))
-            row = await send(client, cases[i], output_tokens, prefill, decode, i, embeddings_file)
-            return {**row, 'scheduled': scheduled}
-
-        return await asyncio.gather(*(arrival(i) for i in range(len(cases))))
 
 
 def main():
@@ -92,15 +78,25 @@ def main():
     args = parser.parse_args()
     if len(set(args.gpu)) != len(args.gpu) or len(args.gpu) < 2:
         parser.error('Use two or more distinct GPU UUIDs.')
+    if args.output_tokens < 2 or any(rate <= 0 for rate in args.rates):
+        parser.error('Use positive rates and at least two output tokens.')
+    try:
+        placements = {
+            layout: plan_placement(args.gpu, prefiller_count, args.port_base)
+            for layout, prefiller_count in (('colocated', 0), ('split', 1))
+        }
+    except ValueError as exc:
+        parser.error(str(exc))
     check_gpu_processes(args.gpu)
     manifest = json.loads((args.inputs / 'manifest.json').read_text())
     cases = load_cases(args.inputs / 'judge_embeds.pt', manifest['cases'])
     index = json.loads((args.model / 'model.safetensors.index.json').read_text())
     embeddings_file = args.model / index['weight_map']['model.embed_tokens.weight']
     count = len(manifest['cases'])
-    settings = SimpleNamespace(**vars(args), prompt_tokens=max(x['positions'] for x in manifest['cases']),
-                               chunk_tokens=2048, prefill_chunk_tokens=None, memory=.83,
-                               max_seqs=32, buffer='cpu', enable_embeds=True)
+    config = VllmConfig(
+        model=args.model, max_model_len=max(x['positions'] for x in manifest['cases']) + args.output_tokens + 128,
+        eager=args.eager, enable_embeds=True,
+    )
     args.out.mkdir(parents=True, exist_ok=False)
     hashes = {
         f'source/{name}': digest
@@ -113,7 +109,7 @@ def main():
         'gpus': args.gpu, 'count': count, 'rates': args.rates, 'output_tokens': args.output_tokens,
         'vllm': version('vllm'), 'nixl': version('nixl'), 'torch': version('torch'),
         'source_sha256': hashes, 'ttft_slo_s': 2.0, 'tpot_slo_s': .03,
-        'buffer': 'cpu', 'eager': args.eager, 'max_num_batched_tokens': settings.chunk_tokens,
+        'buffer': 'cpu', 'eager': args.eager, 'max_num_batched_tokens': config.chunk_tokens,
         'split_first_token': 'emit P token, append it to the D request, reuse P KV',
         'stage': 'requests to the final Judge with upstream LatentMAS vLLM inputs frozen off path',
     }, indent=2))
@@ -123,17 +119,19 @@ def main():
         offsets.append(offsets[-1] + rng.expovariate(1.0))
     references = {}
     with (args.out / 'runs.jsonl').open('x') as f:
-        for split, layout in ((False, 'colocated'), (True, 'split')):
-            roles = (['kv_producer'] + ['kv_consumer'] * (len(args.gpu) - 1)
-                     if split else ['colocated'] * len(args.gpu))
-            with serving(settings, roles, args.out / layout) as (urls, servers):
+        for layout, placement in placements.items():
+            split = bool(placement.prefiller_count)
+            serial_send = partial(send, placement=placement, output_tokens=32, embeddings_file=embeddings_file)
+            online_send = partial(send, placement=placement, output_tokens=args.output_tokens, embeddings_file=embeddings_file)
+            with serving(config, placement, args.out / layout) as deployment:
                 print(layout, 'ready', flush=True)
-                prefill, decode = (urls[:1], urls[1:]) if split else ([], urls)
+                urls = deployment.placement.urls
                 for kind, inputs in cases.items():
                     metrics = args.out / layout / kind
                     metrics.mkdir()
                     before = transfer_counters(urls, metrics, 'serial_before')
-                    gate = asyncio.run(serial(inputs[:8], prefill, decode, embeddings_file))
+                    probe = inputs[:8]
+                    gate = asyncio.run(run_serial(probe, serial_send, connections=len(probe)))
                     delta = capture_after(urls, metrics, 'serial_after', before, len(gate) if split else 0)
                     ids = [c['token_ids'] for c in gate]
                     if not split:
@@ -146,12 +144,11 @@ def main():
                     if matched != len(gate):
                         raise RuntimeError(f'Serial output gate failed for {kind}.')
                     for rate in (() if args.smoke else args.rates):
-                        check_gpu_processes(args.gpu, servers)
+                        deployment.check_health()
                         before = transfer_counters(urls, metrics, f'{rate}_before')
-                        actual = asyncio.run(online(inputs, offsets, rate, args.output_tokens,
-                                                    prefill, decode, embeddings_file))
+                        actual = asyncio.run(replay(inputs, offsets, rate, online_send))
                         delta = capture_after(urls, metrics, f'{rate}_after', before, len(actual) if split else 0)
-                        check_gpu_processes(args.gpu, servers)
+                        deployment.check_health()
                         f.write(json.dumps({'layout': layout, 'input_kind': kind, 'rate': rate,
                                             'cases': actual, 'transfer': delta}) + '\n')
                         f.flush()

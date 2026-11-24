@@ -11,11 +11,13 @@ import time
 import traceback
 
 from latent_agent_system.reproducibility import snapshot_sources
-from latent_agent_system.benchmarks.benchmark_dc_workloads import BLOCKS, Observer, load_methods
+from latent_agent_system.benchmarks.benchmark_dc_workloads import BLOCKS
+from latent_agent_system.profiling.hf_workflow import Observer
 from latent_agent_system.serving.hf_semantic_pd import cache_digest
 from latent_agent_system.serving.kv_transport import (
     compute_pids, relocate_cache, relocate_tensor, state_size,
 )
+from latent_agent_system.workflows.latentmas import load_methods
 
 
 def receive(conn):
