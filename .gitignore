@@ -21,3 +21,7 @@ samples.json
 *.jsonl
 AGENTS.md
 CLAUDE.md
+
+*.egg-info/
+build/
+dist/
